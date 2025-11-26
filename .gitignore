@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dll
+
+# Virtual environments
+.venv/
+venv/
+
+# Build artifacts
+build/
+dist/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# App runtime data
+cctv.db
+recordings/
+resources/sounds/
+# Keep resources/ but ignore large model files by default
+resources/models/*
+!resources/models/.gitkeep
+
+yolov8n.pt
+
+# Env and credentials
+.env
+.env.*
+credentials.json
+token.json
+
+# Cache
+*.cache/

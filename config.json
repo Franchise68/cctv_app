@@ -1,0 +1,15 @@
+{
+  "alert_active_hours": {
+    "start": "12:28",
+    "end": "13:25"
+  },
+  "restricted_zones": [
+    {
+      "name": "Front Door",
+      "camera_id": 1,
+      "radius": 3
+    }
+  ],
+  "admin_email": "franciskithuku244@gmail.com",
+  "admin_phone": "+254768289689"
+}
