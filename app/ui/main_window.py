@@ -23,6 +23,8 @@ class MainWindow(QMainWindow):
         self._autostart_ids = set()
         self._start_after_add_id = None
         self._fixed_cols = 0  # 0 = Auto
+        self._broadcast_on = False
+        self._prev_sidebar_open = None
 
         # Alerts system
         try:
@@ -99,6 +101,11 @@ class MainWindow(QMainWindow):
         act_about = QAction("About", self)
         act_about.triggered.connect(self.open_about)
         tb.addAction(act_about)
+
+        self.act_broadcast = QAction("Broadcast Mode", self)
+        self.act_broadcast.setCheckable(True)
+        self.act_broadcast.triggered.connect(self.toggle_broadcast)
+        tb.addAction(self.act_broadcast)
 
     def _build_central(self):
         # Left sidebar
@@ -266,6 +273,12 @@ class MainWindow(QMainWindow):
                     tile.alerts = self.alerts
                 except Exception:
                     pass
+            # apply broadcast UI state to new tiles
+            try:
+                if hasattr(tile, 'set_broadcast'):
+                    tile.set_broadcast(bool(self._broadcast_on))
+            except Exception:
+                pass
             tile.deleted.connect(self.on_tile_deleted)
             # DnD reorder signal
             if hasattr(tile, 'reorder_request'):
@@ -362,6 +375,31 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         return super().resizeEvent(event)
+
+    def toggle_broadcast(self, checked: bool):
+        self._broadcast_on = bool(checked)
+        try:
+            if self._broadcast_on:
+                self._prev_sidebar_open = bool(self.sidebar.isVisible())
+                if self._prev_sidebar_open:
+                    self.toggle_sidebar(False)
+            else:
+                if self._prev_sidebar_open is not None:
+                    self.toggle_sidebar(bool(self._prev_sidebar_open))
+        except Exception:
+            pass
+        try:
+            for i in range(self.grid.count()):
+                item = self.grid.itemAt(i)
+                w = item.widget() if item else None
+                if w and hasattr(w, 'set_broadcast'):
+                    w.set_broadcast(self._broadcast_on)
+        except Exception:
+            pass
+        try:
+            self._fit_grid_to_viewport()
+        except Exception:
+            pass
 
     def on_tile_deleted(self, cam_id: int):
         self.statusBar().showMessage(f"Camera deleted: {cam_id}", 3000)

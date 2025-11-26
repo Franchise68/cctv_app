@@ -58,6 +58,7 @@ class CameraTile(QWidget):
         self._ai_min_interval = 0.6  # seconds between AI runs per tile
         self.setProperty("class", "camera-tile")
         self._last_alert_ts = 0.0
+        self._broadcast_ui = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -574,13 +575,14 @@ class CameraTile(QWidget):
         except Exception:
             pass
         self._hovered = True
-        try:
-            if hasattr(self, "controls_row"):
-                self.controls_row.setVisible(True)
-            if hasattr(self, "status_lbl"):
-                self.status_lbl.setVisible(True)
-        except Exception:
-            pass
+        if not self._broadcast_ui:
+            try:
+                if hasattr(self, "controls_row"):
+                    self.controls_row.setVisible(True)
+                if hasattr(self, "status_lbl"):
+                    self.status_lbl.setVisible(True)
+            except Exception:
+                pass
         super().enterEvent(e)
 
     def leaveEvent(self, e):
@@ -605,6 +607,29 @@ class CameraTile(QWidget):
         except Exception:
             pass
         super().leaveEvent(e)
+
+    def set_broadcast(self, on: bool):
+        self._broadcast_ui = bool(on)
+        try:
+            if hasattr(self, "chip"):
+                self.chip.setVisible(not self._broadcast_ui)
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "overlay_bar"):
+                self.overlay_bar.setVisible(not self._broadcast_ui)
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "controls_row"):
+                self.controls_row.setVisible(False)
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "status_lbl"):
+                self.status_lbl.setVisible(False)
+        except Exception:
+            pass
 
     def edit_camera(self):
         from ..edit_camera_dialog import EditCameraDialog
