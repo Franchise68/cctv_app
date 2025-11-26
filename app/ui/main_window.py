@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QMainWindow, QWidget, QGridLayout, QLabel, QToolBar, QFileDialog, QMessageBox, QScrollArea, QComboBox, QSplitter, QVBoxLayout, QToolButton, QLineEdit, QStyle, QListWidget, QListWidgetItem
 from PySide6.QtGui import QAction, QIcon, QPainter, QBrush, QColor, QPixmap
-from PySide6.QtCore import Qt, QSettings
+from PySide6.QtCore import Qt, QSettings, QTimer
 import math
 import cv2
 
@@ -142,6 +142,14 @@ class MainWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(container)
+        # Hide scrollbars; we will auto-fit tiles to viewport
+        try:
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        except Exception:
+            pass
+        # Keep a reference for sizing
+        self.scroll = scroll
 
         self.splitter = QSplitter()
         self.splitter.addWidget(self.sidebar)
@@ -149,6 +157,12 @@ class MainWindow(QMainWindow):
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         self.setCentralWidget(self.splitter)
+
+        # Re-fit grid when splitter is moved (sidebar show/hide or resize)
+        try:
+            self.splitter.splitterMoved.connect(lambda _pos, _idx: self._fit_grid_to_viewport())
+        except Exception:
+            pass
 
         # Restore sidebar state
         self.settings = QSettings("cctv_app", "cctv_manager")
@@ -171,6 +185,9 @@ class MainWindow(QMainWindow):
         self.btn_settings.clicked.connect(self.open_settings)
         self.btn_alerts.clicked.connect(self.on_nav_alerts)
         self.cam_list.itemDoubleClicked.connect(self.on_camera_list_activated)
+
+        # Initial fit after UI build
+        QTimer.singleShot(0, self._fit_grid_to_viewport)
 
     def _make_gear_icon(self, size: int = 18) -> QIcon:
         px = QPixmap(size, size)
@@ -236,10 +253,11 @@ class MainWindow(QMainWindow):
             return
 
         from .ui_components.camera_tile import CameraTile
+        # Determine columns based on viewport to avoid scrolling
         if self._fixed_cols and self._fixed_cols > 0:
             cols = self._fixed_cols
         else:
-            cols = max(1, int(math.ceil(math.sqrt(len(cams)))))
+            cols = self._suggest_cols(len(cams))
         for idx, (cid, name, url, type_) in enumerate(cams):
             tile = CameraTile(cid, name, url, type_, self.cfg, self.db)
             # hand over alerts reference for motion notifications
@@ -257,8 +275,93 @@ class MainWindow(QMainWindow):
             # auto-start if it was previously running or is the newly added one
             if cid in prev_running or (self._start_after_add_id is not None and cid == self._start_after_add_id):
                 tile.start()
+        # Fit sizes once tiles are placed
+        self._fit_grid_to_viewport()
         # reset the one-time autostart id after refresh
         self._start_after_add_id = None
+
+    def _suggest_cols(self, n: int) -> int:
+        if n <= 0:
+            return 1
+        try:
+            vp = getattr(self, 'scroll', None).viewport() if hasattr(self, 'scroll') else None
+            if vp is None:
+                return max(1, int(math.ceil(math.sqrt(n))))
+            W = max(1, vp.width())
+            H = max(1, vp.height())
+            # grid margins/spacings
+            margins = 8 * 2
+            spacing = self.grid.spacing() if hasattr(self, 'grid') else 6
+            best_c = 1
+            best_w = 0.0
+            for c in range(1, n + 1):
+                rows = int(math.ceil(n / float(c)))
+                tile_w = (W - (c - 1) * spacing - margins) / float(c)
+                tile_h = tile_w * 9.0 / 16.0
+                total_h = rows * tile_h + (rows - 1) * spacing + margins
+                if tile_w > 0 and total_h <= H and tile_w > best_w:
+                    best_w, best_c = tile_w, c
+            if best_c >= 1:
+                return best_c
+            # Fallback if none fit height: choose c that yields widest tiles, we'll downscale in _fit
+            best_w = -1.0
+            for c in range(1, n + 1):
+                tile_w = (W - (c - 1) * spacing - margins) / float(c)
+                if tile_w > best_w:
+                    best_w, best_c = tile_w, c
+            return max(1, best_c)
+        except Exception:
+            return max(1, int(math.ceil(math.sqrt(n))))
+
+    def _fit_grid_to_viewport(self):
+        try:
+            if not hasattr(self, 'scroll') or self.scroll is None:
+                return
+            vp = self.scroll.viewport()
+            W = max(1, vp.width())
+            H = max(1, vp.height())
+            n = sum(1 for i in range(self.grid.count()) if self.grid.itemAt(i) and self.grid.itemAt(i).widget())
+            if n == 0:
+                return
+            spacing = self.grid.spacing()
+            margins = 8 * 2
+            cols = self._fixed_cols if (self._fixed_cols and self._fixed_cols > 0) else self._suggest_cols(n)
+            rows = int(math.ceil(n / float(cols)))
+            # base tile width/height by 16:9, adjust to fill height if needed
+            tile_w = (W - (cols - 1) * spacing - margins) / float(cols)
+            tile_h = tile_w * 9.0 / 16.0
+            total_h = rows * tile_h + (rows - 1) * spacing + margins
+            if total_h > H and total_h > 0:
+                scale = (H - margins - (rows - 1) * spacing) / (rows * tile_h)
+                scale = max(0.2, min(1.0, scale))
+                tile_w *= scale
+                tile_h *= scale
+            # Reflow widgets into the computed column count and set sizes
+            tiles = [self.grid.itemAt(i).widget() for i in range(self.grid.count()) if self.grid.itemAt(i).widget()]
+            for idx, w in enumerate(tiles):
+                r, c = divmod(idx, cols)
+                try:
+                    self.grid.addWidget(w, r, c)
+                except Exception:
+                    pass
+                try:
+                    w.setFixedWidth(int(tile_w))
+                    # ensure the video area respects 16:9; label holds the frame
+                    if hasattr(w, 'label'):
+                        w.label.setFixedHeight(int(tile_h))
+                    # include small layout margins inside the tile
+                    w.setFixedHeight(int(tile_h) + 12)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def resizeEvent(self, event):
+        try:
+            self._fit_grid_to_viewport()
+        except Exception:
+            pass
+        return super().resizeEvent(event)
 
     def on_tile_deleted(self, cam_id: int):
         self.statusBar().showMessage(f"Camera deleted: {cam_id}", 3000)
@@ -400,6 +503,11 @@ class MainWindow(QMainWindow):
             self.settings.setValue("ui/sidebar_width", sizes[0] if sizes and sizes[0] > 0 else 180)
             self.splitter.setSizes([0, max(200, sum(sizes))])
         self._apply_sidebar_compact_mode()
+        # Re-fit grid after sidebar toggle
+        try:
+            self._fit_grid_to_viewport()
+        except Exception:
+            pass
 
     def on_reorder_request(self, source_id: int, target_id: int):
         # Build current ordered list
