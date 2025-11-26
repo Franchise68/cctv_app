@@ -69,6 +69,7 @@ class CameraTile(QWidget):
 
         self.status_lbl = QLabel("")
         layout.addWidget(self.status_lbl)
+        self.status_lbl.setVisible(False)
 
         # Status chip (overlay on video, top-right)
         self.chip = QLabel("IDLE", self.label)
@@ -175,7 +176,7 @@ class CameraTile(QWidget):
         row.addStretch(1)
         self.controls_row = QWidget()
         self.controls_row.setLayout(row)
-        self.controls_row.setVisible(True)
+        self.controls_row.setVisible(False)
         layout.addWidget(self.controls_row)
 
         self.btn_start.clicked.connect(self.start)
@@ -573,6 +574,13 @@ class CameraTile(QWidget):
         except Exception:
             pass
         self._hovered = True
+        try:
+            if hasattr(self, "controls_row"):
+                self.controls_row.setVisible(True)
+            if hasattr(self, "status_lbl"):
+                self.status_lbl.setVisible(True)
+        except Exception:
+            pass
         super().enterEvent(e)
 
     def leaveEvent(self, e):
@@ -589,6 +597,13 @@ class CameraTile(QWidget):
         except Exception:
             pass
         self._hovered = False
+        try:
+            if hasattr(self, "controls_row"):
+                self.controls_row.setVisible(False)
+            if hasattr(self, "status_lbl"):
+                self.status_lbl.setVisible(False)
+        except Exception:
+            pass
         super().leaveEvent(e)
 
     def edit_camera(self):
