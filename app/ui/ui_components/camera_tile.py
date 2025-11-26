@@ -17,6 +17,7 @@ from ...config import AppConfig
 class CameraTile(QWidget):
     deleted = Signal(int)  # camera_id
     reorder_request = Signal(int, int)  # (source_id, target_id)
+    selected = Signal(int)  # camera_id
 
     def __init__(self, camera_id: int, name: str, url: str, cam_type: str, cfg: AppConfig, db):
         super().__init__()
@@ -59,6 +60,7 @@ class CameraTile(QWidget):
         self.setProperty("class", "camera-tile")
         self._last_alert_ts = 0.0
         self._broadcast_ui = False
+        self._selected = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -188,6 +190,24 @@ class CameraTile(QWidget):
         self.btn_edit.clicked.connect(self.edit_camera)
         self.btn_move_left.clicked.connect(lambda: self._request_move(-1))
         self.btn_move_right.clicked.connect(lambda: self._request_move(+1))
+
+    def mousePressEvent(self, e):
+        try:
+            if e.button() == Qt.LeftButton:
+                self.selected.emit(self.camera_id)
+        except Exception:
+            pass
+        return super().mousePressEvent(e)
+
+    def set_selected(self, sel: bool):
+        self._selected = bool(sel)
+        try:
+            if self._selected:
+                self.setStyleSheet("border: 2px solid #2aa3ff; border-radius: 6px;")
+            else:
+                self.setStyleSheet("")
+        except Exception:
+            pass
 
     def start(self):
         if self.worker and self.worker.isRunning():

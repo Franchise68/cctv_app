@@ -25,6 +25,8 @@ class MainWindow(QMainWindow):
         self._fixed_cols = 0  # 0 = Auto
         self._broadcast_on = False
         self._prev_sidebar_open = None
+        self._selected_camera_id = None
+        self._active_icon = None
 
         # Alerts system
         try:
@@ -192,6 +194,10 @@ class MainWindow(QMainWindow):
         self.btn_settings.clicked.connect(self.open_settings)
         self.btn_alerts.clicked.connect(self.on_nav_alerts)
         self.cam_list.itemDoubleClicked.connect(self.on_camera_list_activated)
+        try:
+            self.cam_list.currentItemChanged.connect(self.on_camera_list_changed)
+        except Exception:
+            pass
 
         # Initial fit after UI build
         QTimer.singleShot(0, self._fit_grid_to_viewport)
@@ -279,6 +285,11 @@ class MainWindow(QMainWindow):
                     tile.set_broadcast(bool(self._broadcast_on))
             except Exception:
                 pass
+            try:
+                if hasattr(tile, 'selected'):
+                    tile.selected.connect(self.on_tile_selected)
+            except Exception:
+                pass
             tile.deleted.connect(self.on_tile_deleted)
             # DnD reorder signal
             if hasattr(tile, 'reorder_request'):
@@ -288,10 +299,19 @@ class MainWindow(QMainWindow):
             # auto-start if it was previously running or is the newly added one
             if cid in prev_running or (self._start_after_add_id is not None and cid == self._start_after_add_id):
                 tile.start()
+            try:
+                if self._selected_camera_id is not None and hasattr(tile, 'set_selected'):
+                    tile.set_selected(tile.camera_id == int(self._selected_camera_id))
+            except Exception:
+                pass
         # Fit sizes once tiles are placed
         self._fit_grid_to_viewport()
         # reset the one-time autostart id after refresh
         self._start_after_add_id = None
+        try:
+            self._update_sidebar_active_indicator()
+        except Exception:
+            pass
 
     def _suggest_cols(self, n: int) -> int:
         if n <= 0:
@@ -594,6 +614,10 @@ class MainWindow(QMainWindow):
                 self.cam_list.addItem(item)
         except Exception:
             pass
+        try:
+            self._update_sidebar_active_indicator()
+        except Exception:
+            pass
 
     def on_camera_list_activated(self, item: QListWidgetItem):
         try:
@@ -624,6 +648,81 @@ class MainWindow(QMainWindow):
                 # Reflect changes
                 self.populate_camera_list()
                 self.refresh_grid()
+        except Exception:
+            pass
+
+    def on_camera_list_changed(self, cur: QListWidgetItem, prev: QListWidgetItem | None):
+        try:
+            if not cur:
+                return
+            cid = cur.data(Qt.UserRole)
+            self._selected_camera_id = int(cid)
+            # update tiles selection
+            for i in range(self.grid.count()):
+                it = self.grid.itemAt(i)
+                w = it.widget() if it else None
+                try:
+                    if w and hasattr(w, 'set_selected'):
+                        w.set_selected(getattr(w, 'camera_id', -1) == self._selected_camera_id)
+                except Exception:
+                    pass
+            self._update_sidebar_active_indicator()
+        except Exception:
+            pass
+
+    def on_tile_selected(self, cam_id: int):
+        try:
+            self._selected_camera_id = int(cam_id)
+            # mark tiles
+            for i in range(self.grid.count()):
+                it = self.grid.itemAt(i)
+                w = it.widget() if it else None
+                try:
+                    if w and hasattr(w, 'set_selected'):
+                        w.set_selected(getattr(w, 'camera_id', -1) == self._selected_camera_id)
+                except Exception:
+                    pass
+            # reflect in sidebar list
+            self._update_sidebar_active_indicator()
+            try:
+                # also select corresponding item in the sidebar list
+                for i in range(self.cam_list.count()):
+                    it = self.cam_list.item(i)
+                    if int(it.data(Qt.UserRole)) == self._selected_camera_id:
+                        self.cam_list.setCurrentItem(it)
+                        break
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _make_active_icon(self, size: int = 10) -> QIcon:
+        try:
+            px = QPixmap(size, size)
+            px.fill(Qt.transparent)
+            p = QPainter(px)
+            p.setRenderHint(QPainter.Antialiasing, True)
+            p.setBrush(QBrush(QColor(42, 163, 255)))
+            p.setPen(Qt.NoPen)
+            r = int(size * 0.8)
+            off = (size - r) // 2
+            p.drawEllipse(off, off, r, r)
+            p.end()
+            return QIcon(px)
+        except Exception:
+            return QIcon()
+
+    def _update_sidebar_active_indicator(self):
+        try:
+            if self._active_icon is None:
+                self._active_icon = self._make_active_icon(10)
+            for i in range(self.cam_list.count()):
+                it = self.cam_list.item(i)
+                cid = it.data(Qt.UserRole)
+                if self._selected_camera_id is not None and int(cid) == int(self._selected_camera_id):
+                    it.setIcon(self._active_icon)
+                else:
+                    it.setIcon(QIcon())
         except Exception:
             pass
 
